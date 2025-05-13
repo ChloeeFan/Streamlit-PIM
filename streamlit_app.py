@@ -1,3 +1,6 @@
+pip install streamlit-aggrid
+pip install openpyxl
+
 import streamlit as st
 import pandas as pd
 from pathlib import Path
