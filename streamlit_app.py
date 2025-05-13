@@ -8,7 +8,7 @@ st.set_page_config(layout="wide")
 st.title("250408 PIM Lite Consolidated")
 
 # Excel path and sheet
-excel_path = Path("/workspaces/blank-app/250408_PIM Lite Consolidated.xlsx")
+excel_path = Path("250408_PIM Lite Consolidated.xlsx")
 sheet_name = "PIM"
 
 if not excel_path.exists():
