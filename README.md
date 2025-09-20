@@ -148,8 +148,7 @@ This will publish:
 
 ## 📖 Assignment Deliverables
 
-- **GitHub Repo**: [https://github.com/<your-username>/Streamlit-PIM](https://github.com/<your-username>/Streamlit-PIM)  
-- **DockerHub Image** (optional): [https://hub.docker.com/r/<your-dockerhub-username>/streamlit-pim](https://hub.docker.com/r/<your-dockerhub-username>/streamlit-pim)  
+- **GitHub Repo**: [https://github.com/ChloeeFan/Streamlit-PIM]
 
 ---
 
