@@ -1,3 +1,5 @@
+[![CI](https://github.com/ChloeeFan/Streamlit-PIM/actions/workflows/ci.yml/badge.svg)](https://github.com/ChloeeFan/Streamlit-PIM/actions/workflows/ci.yml)
+
 # 📦 Streamlit PIM Lite
 
 A lightweight **Product Information Management (PIM)** dashboard built with **Streamlit**, designed for exploring and validating product metadata (SKU, URLs, images, materials, etc.).  
