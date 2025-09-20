@@ -1,197 +1,277 @@
-
 import streamlit as st
 import pandas as pd
 from pathlib import Path
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
+import warnings
+
+# Suppress the specific warning from openpyxl
+warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 st.set_page_config(layout="wide")
 st.title("250408 PIM Lite Consolidated")
 
-# Excel path and sheet
-excel_path = Path("250408_PIM Lite Consolidated.xlsx")
-sheet_name = "PIM"
+# Folder where your script and the file will be saved
+folder_path = Path(__file__).parent
 
-if not excel_path.exists():
-    st.error(f"❌ File not found: {excel_path}")
-else:
-    @st.cache_data
-    def load_data():
-        df = pd.read_excel(
-            excel_path,
-            sheet_name=sheet_name,
-            usecols="A:U",
-            header=1
-        )
+# Hidden file to store the last uploaded file (the file will be saved with a .hidden extension)
+hidden_file_path = folder_path / ".last_uploaded_file.hidden"
 
-        # Clean column names
-        df.columns = df.columns.map(str).str.strip()
+# Function to process the dataframe (cleaning and column setups)
+def process_dataframe(df):
+    # Clean column names
+    df.columns = df.columns.map(str).str.strip()
 
-        # Drop unwanted/ghost/empty columns
-        df = df.loc[:, ~df.columns.str.match(r'^Unnamed.*$')]
-        df = df.loc[:, df.columns.str.len() > 0]
-        df = df.dropna(axis=1, how="all")
-        df = df.loc[:, ~df.columns.str.match(r'^\|.*$')]
-        df = df.loc[:, ~df.columns.str.match(r'^\d+$')]
-
-        return df
-
-    df = load_data()
+    # Drop unwanted/ghost/empty columns
+    df = df.loc[:, ~df.columns.str.match(r'^Unnamed.*$')]
+    df = df.loc[:, df.columns.str.len() > 0]
+    df = df.dropna(axis=1, how="all")
+    df = df.loc[:, ~df.columns.str.match(r'^\|.*$')]
+    df = df.loc[:, ~df.columns.str.match(r'^\d+$')]
 
     if "Column2" in df.columns:
         df = df.drop(columns=["Column2"])
 
+    # Ensure 'Added' column is in datetime format and format it to display only the date
     if "Added" in df.columns:
-        df["Added"] = pd.to_datetime(df["Added"], errors="coerce").dt.strftime("%d/%m/%Y")
+        df["Added"] = pd.to_datetime(df["Added"], errors="coerce").dt.strftime("%Y-%m-%d")
 
     # Drop extra columns you want to remove
     cols_to_drop = ["Complete?", "Model", "Size"]
     df = df.drop(columns=[col for col in cols_to_drop if col in df.columns])
 
-    # Yellow-highlighted columns
-    yellow_highlight_cols = ["Macro Material_", "Main Color_", "Shape_", "Carry_"]
+    return df
 
-    # ✅ Create 'Complete Status' BEFORE building grid
-    df["Complete Status"] = df[yellow_highlight_cols].apply(
-        lambda row: all(x and str(x).strip() != "" for x in row), axis=1
-    ).astype(int)
+# Stage 1: User Choice
+user_choice = st.radio("Choose an option:", ["Open previous file", "Upload new file"])
 
-    # ✅ JS renderers
-    image_renderer = JsCode("""
-    class ImgCellRenderer {
-        init(params) {
-            this.eGui = document.createElement('div');
-            if (params.value) {
-                this.eGui.innerHTML = `<img src="${params.value}" style="height:60px; object-fit:contain;" />`;
-            }
-        }
-        getGui() {
-            return this.eGui;
-        }
-    }
-    """)
+# Initialize variable for uploaded file
+uploaded_file = None
 
-    highlight_count = JsCode("""
-    function(params) {
-        const style = {
-            'fontSize': '11px',
-            'fontFamily': 'Arial, sans-serif'
-        };
-        if (parseFloat(params.value) > 1) {
-            style.color = 'white';
-            style.backgroundColor = 'red';
-            style.fontWeight = 'bold';
-        }
-        return style;
-    }
-    """)
+if user_choice == "Open previous file":
+    # Check if the hidden file exists
+    if hidden_file_path.exists():
+        st.info(f"Found a previously uploaded file. Loading...")
+        try:
+            # Open the hidden file as bytes and load it into a pandas DataFrame
+            with open(hidden_file_path, "rb") as f:
+                uploaded_file = f.read()  # Read the file as bytes
+            
+            # Load the file into a pandas dataframe
+            from io import BytesIO
+            df = pd.read_excel(
+    BytesIO(uploaded_file),        # or uploaded_file for the upload branch
+    sheet_name="PIM",
+    usecols="A:U",
+    header=1,
+    dtype={"SKU": str, "URL": str, "Image URL": str}  # <— add this
+)
 
-    highlight_incomplete = JsCode("""
-    function(params) {
-        const style = {
-            'fontSize': '11px',
-            'fontFamily': 'Arial, sans-serif'
-        };
-        if (parseInt(params.value) === 0) {
-            style.color = 'white';
-            style.backgroundColor = 'red';
-            style.fontWeight = 'bold';
-        }
-        return style;
-    }
-    """)
+            # Process the dataframe (cleaning and column setup)
+            df = process_dataframe(df)
 
-    # ✅ Grid builder (after 'Complete Status' added)
-    gb = GridOptionsBuilder.from_dataframe(df)
+            # Your grid configuration logic (highlighting, dropdowns, etc.) remains the same
+            yellow_highlight_cols = ["Macro Material_", "Main Color_", "Shape_", "Carry_"]
+            df["Complete Status"] = df[yellow_highlight_cols].apply(
+                lambda row: 0 if row.isna().any() or any(str(x).strip() == "" for x in row) else 1, axis=1
+            ).astype(int)
 
-    # Default column styling
-    gb.configure_default_column(
-        resizable=True,
-        filter=True,
-        sortable=True,
-        editable=True,
-        wrapText=True,
-        autoHeight=False,
-        cellStyle={
-            "fontSize": "11px",
-            "fontFamily": "Arial, sans-serif",
-            "lineHeight": "1.2"
-        }
-    )
+            # Build grid options
+            gb = GridOptionsBuilder.from_dataframe(df)
 
-    # Yellow-highlighted columns
-    yellow_style = JsCode("""
-    function(params) {
-        return {
-            'backgroundColor': '#fffac8',
-            'fontSize': '11px',
-            'fontFamily': 'Arial, sans-serif'
-        }
-    }
-    """)
-    for col in yellow_highlight_cols:
-        if col in df.columns:
-            gb.configure_column(col, cellStyle=yellow_style, minWidth=90)
-
-    # Image column (unchanged)
-    if "Image URL" in df.columns:
-        gb.configure_column("Image URL", cellRenderer=image_renderer, editable=False, width=230)
-
-    # ✅ URL column as editable text (without modification)
-    if "URL" in df.columns:
-        gb.configure_column("URL", editable=True, width=250)
-
-    # Highlight Count column
-    count_col = next((col for col in df.columns if col.strip().lower() == "count"), None)
-    if count_col:
-        gb.configure_column(count_col, cellStyle=highlight_count)
-
-    # Highlight Complete Status column
-    if "Complete Status" in df.columns:
-        gb.configure_column("Complete Status", cellStyle=highlight_incomplete, width=120)
-
-    # Key wrapped columns
-    wide_wrap_cols = ["Name", "Brand", "Category", "Main Color_"]
-    for col in wide_wrap_cols:
-        if col in df.columns:
-            gb.configure_column(col, wrapText=True, autoHeight=False, minWidth=120)
-
-    # Dropdown columns
-    dropdown_cols = ["Macro Material_", "Main Material_", "Main Color_", "Shape_", "Carry_"]
-    for col in dropdown_cols:
-        if col in df.columns:
-            unique_vals = df[col].dropna().astype(str).unique().tolist()
-            gb.configure_column(
-                col,
+            # Configure default column behavior
+            gb.configure_default_column(
+                resizable=True,
+                filter=True,
+                sortable=True,
                 editable=True,
-                cellEditor="agSelectCellEditor",
-                cellEditorParams={"values": unique_vals},
                 wrapText=True,
                 autoHeight=False,
-                minWidth=100
+                cellStyle={"fontSize": "11px", "fontFamily": "Arial, sans-serif", "lineHeight": "1.2"}
             )
 
-    # Set row height
-    gb.configure_grid_options(rowHeight=60)
-    grid_options = gb.build()
+            # Add the column configurations for dropdowns, highlights, and custom JS renderers
+            yellow_style = JsCode("""
+                function(params) {
+                    if (params.value == null || params.value.toLowerCase() === "blanket") {
+                        return { 'backgroundColor': '#ffcc99', 'fontSize': '11px' };
+                    }
+                    return { 'backgroundColor': '#fffac8', 'fontSize': '11px' };
+                }
+            """)
 
-    # Header font styling
-    custom_css = {
-        ".ag-header-cell-label": {
-            "font-size": "11px",
-            "line-height": "1.2",
-            "white-space": "normal"
+            for col in yellow_highlight_cols:
+                if col in df.columns:
+                    gb.configure_column(col, cellStyle=yellow_style, minWidth=90)
+
+            # Image rendering for URLs
+            image_renderer = JsCode("""
+            class ImgCellRenderer {
+                init(params) {
+                    this.eGui = document.createElement('div');
+                    if (params.value) {
+                        this.eGui.innerHTML = `<img src="${params.value}" style="height:60px; object-fit:contain;" />`;
+                    }
+                }
+                getGui() {
+                    return this.eGui;
+                }
+            }
+            """)
+
+            if "Image URL" in df.columns:
+                gb.configure_column("Image URL", cellRenderer=image_renderer, editable=False, width=230)
+
+            # Make URLs clickable
+            url_renderer = JsCode("""
+            class LinkRenderer {
+                init(params) {
+                    this.eGui = document.createElement('a');
+                    if (params.value) {
+                        this.eGui.setAttribute("href", params.value);
+                        this.eGui.setAttribute("target", "_blank");
+                        this.eGui.innerHTML = params.value;
+                    }
+                }
+                getGui() {
+                    return this.eGui;
+                }
+            }
+            """)
+
+            if "URL" in df.columns:
+                gb.configure_column("URL", cellRenderer=url_renderer, editable=False, width=250)
+
+            # Set row height and display options
+            gb.configure_grid_options(rowHeight=60, rowSelection='none', suppressCopyRowsToClipboard=False, multiSelect=True)
+            grid_options = gb.build()
+
+            # Show the grid
+            AgGrid(
+                df,
+                gridOptions=grid_options,
+                height=900,
+                allow_unsafe_jscode=True,
+                update_mode=GridUpdateMode.MODEL_CHANGED,
+                enable_enterprise_modules=True,
+                theme="alpine",
+                fit_columns_on_grid_load=True
+            )
+
+        except Exception as e:
+            st.error(f"Error loading the hidden file: {e}")
+    else:
+        st.warning("No previous file found.")
+
+elif user_choice == "Upload new file":
+    st.subheader("Step 1: Upload your Excel file")
+    uploaded_file = st.file_uploader("Choose an Excel file", type=["xlsx"])
+
+    if uploaded_file is not None:
+        # Save the uploaded file as a hidden file with a custom name
+        with open(hidden_file_path, "wb") as f:
+            f.write(uploaded_file.getvalue())  # Save the file content
+
+        # Load the data
+        df = pd.read_excel(
+    BytesIO(uploaded_file),        # or uploaded_file for the upload branch
+    sheet_name="PIM",
+    usecols="A:U",
+    header=1,
+    dtype={"SKU": str, "URL": str, "Image URL": str}  # <— add this
+)
+
+        # Process the dataframe (cleaning and column setup)
+        df = process_dataframe(df)
+        
+
+ # Your grid configuration logic (highlighting, dropdowns, etc.) remains the same
+        yellow_highlight_cols = ["Macro Material_", "Main Color_", "Shape_", "Carry_"]
+        df["Complete Status"] = df[yellow_highlight_cols].apply(
+            lambda row: 0 if row.isna().any() or any(str(x).strip() == "" for x in row) else 1, axis=1
+        ).astype(int)
+
+        # Build grid options
+        gb = GridOptionsBuilder.from_dataframe(df)
+
+        # Configure default column behavior
+        gb.configure_default_column(
+            resizable=True,
+            filter=True,
+            sortable=True,
+            editable=True,
+            wrapText=True,
+            autoHeight=False,
+            cellStyle={"fontSize": "11px", "fontFamily": "Arial, sans-serif", "lineHeight": "1.2"}
+        )
+
+        # Add the column configurations for dropdowns, highlights, and custom JS renderers
+        yellow_style = JsCode("""
+            function(params) {
+                if (params.value == null || params.value.toLowerCase() === "blanket") {
+                    return { 'backgroundColor': '#ffcc99', 'fontSize': '11px' };
+                }
+                return { 'backgroundColor': '#fffac8', 'fontSize': '11px' };
+            }
+        """)
+
+        for col in yellow_highlight_cols:
+            if col in df.columns:
+                gb.configure_column(col, cellStyle=yellow_style, minWidth=90)
+
+        # Image rendering for URLs
+        image_renderer = JsCode("""
+        class ImgCellRenderer {
+            init(params) {
+                this.eGui = document.createElement('div');
+                if (params.value) {
+                    this.eGui.innerHTML = `<img src="${params.value}" style="height:60px; object-fit:contain;" />`;
+                }
+            }
+            getGui() {
+                return this.eGui;
+            }
         }
-    }
+        """)
 
-    # Show AgGrid table
-    AgGrid(
-        df,
-        gridOptions=grid_options,
-        height=900,
-        allow_unsafe_jscode=True,
-        update_mode=GridUpdateMode.MODEL_CHANGED,
-        enable_enterprise_modules=True,
-        theme="alpine",
-        fit_columns_on_grid_load=True,
-        custom_css=custom_css
-    )
+        if "Image URL" in df.columns:
+            gb.configure_column("Image URL", cellRenderer=image_renderer, editable=False, width=230)
+
+        # Make URLs clickable
+        url_renderer = JsCode("""
+        class LinkRenderer {
+            init(params) {
+                this.eGui = document.createElement('a');
+                if (params.value) {
+                    this.eGui.setAttribute("href", params.value);
+                    this.eGui.setAttribute("target", "_blank");
+                    this.eGui.innerHTML = params.value;
+                }
+            }
+            getGui() {
+                return this.eGui;
+            }
+        }
+        """)
+
+        if "URL" in df.columns:
+            gb.configure_column("URL", cellRenderer=url_renderer, editable=False, width=250)
+
+
+        # Set row height and display options
+        gb.configure_grid_options(rowHeight=60, rowSelection='none', suppressCopyRowsToClipboard=False, multiSelect=True)
+        grid_options = gb.build()
+
+        # Show the grid
+        AgGrid(
+            df,
+            gridOptions=grid_options,
+            height=900,
+            allow_unsafe_jscode=True,
+            update_mode=GridUpdateMode.MODEL_CHANGED,
+            enable_enterprise_modules=True,
+            theme="alpine",
+            fit_columns_on_grid_load=True
+        )
+
+else:
+    st.info("Please upload an Excel file or choose to open the previous file.")
