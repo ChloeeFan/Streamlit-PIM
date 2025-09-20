@@ -149,6 +149,7 @@ This will publish:
 ## 📖 Assignment Deliverables
 
 - **GitHub Repo**: [https://github.com/ChloeeFan/Streamlit-PIM]
+- **Dockerhub Repo**: [https://hub.docker.com/repository/docker/13987133805fjy/streamlit-pim/general]
 
 ---
 
