@@ -42,8 +42,6 @@ Streamlit-PIM/
 ├── tests/                     # Unit tests (pytest)
 │   ├── test_io_utils.py
 │   ├── test_metrics.py
-│   ├── test_imports.py
-│   └── test_smoke.py
 │
 ├── streamlit_app.py           # Main Streamlit application
 ├── requirements.txt           # Python dependencies
