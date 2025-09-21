@@ -9,6 +9,8 @@ This repo demonstrates:
 - containerization with Docker
 - automated CI/CD via GitHub Actions
 
+👉 To test the app, please use the sample file **`250408_PIM Lite Consolidated.xlsx`**.
+
 ---
 
 ## 🚀 Features
